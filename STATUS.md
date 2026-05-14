@@ -1,6 +1,6 @@
 # 项目开发进度
 
-> 更新日期: 2026-05-14（仪表盘真实统计接入；博客 + 作品管理 CRUD 完成；全部公开页面对接真实 API；图片上传后端实现）
+> 更新日期: 2026-05-15（图片上传前后端完整实现；前端图片加载修复；上传路径 absolute 修复）
 
 ---
 
@@ -139,6 +139,16 @@
 - 启动时读取 localStorage 中的 token，调用 `GET /api/auth/admin/me` 验证
 - 验证失败时自动尝试 refresh token 刷新
 - 三种状态：loading / authenticated (渲染 children) / unauthenticated (渲染 fallback)
+
+#### ImageUploader
+文件: [components/admin/ImageUploader.tsx](frontend/src/components/admin/ImageUploader.tsx)
+
+- Client component，图片上传组件，已集成到 PostEditor 和 ProjectEditor
+- 点击"选择图片上传"按钮 → 本地文件选择 → 调用 `adminUploadMedia()` 上传到后端
+- 上传成功后自动填充 URL，同时显示 48×48 缩略图预览
+- 保留手动输入 URL 的底线文本框（可粘贴外部链接或回退）
+- 状态处理：上传中（"上传中…"）、失败（红色错误信息）、成功（缩略图 + 自动填充）
+- 文件限制提示：JPG / PNG / GIF / WebP，≤ 10MB
 
 #### LoginForm
 文件: [components/admin/LoginForm.tsx](frontend/src/components/admin/LoginForm.tsx)
@@ -328,7 +338,7 @@
 
 - 通过可选 `id` prop 区分新建/编辑模式
 - 编辑模式下启动时调用 `adminGetPost()` 加载已有数据
-- 表单字段: 标题、Slug、分类、摘要、标签（逗号分隔）、封面图 URL、正文（Markdown 文本区）
+- 表单字段: 标题、Slug、分类、摘要、标签（逗号分隔）、封面图（ImageUploader 组件，支持本地上传或手动输入 URL）、正文（Markdown 文本区）
 - 两个提交按钮: "保存草稿"（status=draft）+ "发布"（status=published）
 - 新建成功后自动跳转到编辑页 (`router.replace`)
 - 保存/发布后显示 "已保存。" 成功提示（2 秒自动消失）
@@ -359,7 +369,7 @@
 
 - 通过可选 `id` prop 区分新建/编辑模式
 - 编辑模式下启动时调用 `adminGetProject()` 加载已有数据
-- 表单字段: 作品名称 (\*)、Slug (\*)、优先级（数字）、一句话简介、封面图 URL、详细介绍（Markdown 文本区）、技术栈（逗号分隔 → JSON 字符串）、截图 URL（逗号分隔 → JSON 字符串）、演示链接、源码链接、我的角色、完成日期
+- 表单字段: 作品名称 (\*)、Slug (\*)、优先级（数字）、一句话简介、封面图（ImageUploader 组件，支持本地上传或手动输入 URL）、详细介绍（Markdown 文本区）、技术栈（逗号分隔 → JSON 字符串）、截图 URL（逗号分隔 + 上传按钮追加）、演示链接、源码链接、我的角色、完成日期
 - `screenshots` / `techStack` 字段转换: 后端存储为 JSON 字符串 `["a","b"]`，编辑器用逗号分隔文本输入/展示，通过 `jsonArrayStringToCommaText` / `commaTextToJsonArrayString` 双向转换
 - 前端校验: name/slug 非空、priority 为数字
 - 后端校验: `@NotBlank` on name/slug、`@Size(max=200)` on tagline（返回 400 + 中文错误信息）
@@ -420,6 +430,11 @@
 | `adminCreatePost(token, data)` | `POST /api/admin/posts` | 创建文章 |
 | `adminUpdatePost(token, id, data)` | `PUT /api/admin/posts/{id}` | 更新文章 |
 | `adminDeletePost(token, id)` | `DELETE /api/admin/posts/{id}` | 删除文章 |
+
+**管理端媒体上传 (需 Bearer Token):**
+| 函数 | HTTP | 说明 |
+|------|------|------|
+| `adminUploadMedia(token, file)` | `POST /api/admin/media/upload` | 上传图片文件 |
 
 **管理端作品 CRUD (需 Bearer Token):**
 | 函数 | HTTP | 说明 |
@@ -494,6 +509,7 @@ frontend/
 │   │   │   └── Container.tsx   ← 宽度容器
 │   │   ├── admin/
 │   │   │   ├── AuthGuard.tsx   ← 鉴权守卫 (Client)
+│   │   │   ├── ImageUploader.tsx ← 图片上传组件 (Client)
 │   │   │   └── LoginForm.tsx   ← 管理员登录表单 (Client)
 │   │   └── ui/
 │   │       ├── FadeIn.tsx      ← 淡入动画 + 错开容器 (Client)
@@ -638,7 +654,7 @@ Controller  →  Service  →  Repository  →  Entity
 | BlogService | 已实现 | `findPublished()`, `findAllPaginated()`, `findById()`, `findBySlug()`, `findBySlugPublished()`, `create()`, `update()`, `delete()` — 含自动设置 publishedAt 逻辑 |
 | ProjectService | 已实现 | `findAll()`, `findBySlug()`, `findById()`, `findAllPaginated()`, `create()`, `update()`, `delete()` — 含分页排序 (priority DESC, createdAt DESC)、创建时服务端字段控制、分页参数限制 (page>=0, 1<=size<=100) |
 | AuthService | 已实现 | `login()`, `refresh()`, `logout()`, `getMe()`, `getCurrentUser()` — 完整 JWT 认证 |
-| MediaService | 骨架 | `save()` |
+| MediaService | 已实现 | `upload()` — 文件校验（空文件/非图片/大小）、MIME→安全扩展名映射（防 .html 伪造）、UUID 存储文件名、绝对路径保存（`toAbsolutePath().normalize()` + `Files.copy`）、DB 失败孤儿文件清理；`save()` |
 | DashboardService | 已实现 | `getStats()` — 仪表盘统计：博客/作品/媒体计数 + 最近条目列表 |
 
 ### 2.6 Controller 层
@@ -650,7 +666,7 @@ Controller  →  Service  →  Repository  →  Entity
 | ProjectController | `/api/projects` | `GET /` (列表), `GET /{slug}` (详情) |
 | AdminProjectController | `/api/admin/projects` | `GET /` (分页列表), `GET /{id}`, `POST /` (创建), `PUT /{id}` (更新), `DELETE /{id}` (删除) |
 | AuthController | `/api/auth` | `POST /admin/login`, `POST /admin/refresh`, `POST /admin/logout`, `GET /admin/me` |
-| MediaController | `/api/admin/media` | `POST /upload` (骨架，待前端集成) |
+| MediaController | `/api/admin/media` | `POST /upload` (已实现，返回 `ApiResponse<MediaUploadResponse>`) |
 | AdminDashboardController | `/api/admin/dashboard` | `GET /stats` (仪表盘统计) |
 
 ### 2.7 DTO 层
@@ -666,6 +682,7 @@ Controller  →  Service  →  Repository  →  Entity
 | MediaStatsDto | 媒体统计 DTO |
 | RecentPostDto | 最近博客摘要 DTO |
 | RecentProjectDto | 最近作品摘要 DTO |
+| MediaUploadResponse | 上传响应 DTO：id, filename, url, size, mimeType, uploadedAt，含 `from(Media)` 工厂方法 |
 | DashboardStatsResponse | 仪表盘响应 DTO（PostStatsDto + ProjectStatsDto + MediaStatsDto + 最近列表） |
 
 ### 2.8 配置 & 异常处理
@@ -677,7 +694,7 @@ Controller  →  Service  →  Repository  →  Entity
 | JwtProvider.java | JWT 生成 (accessToken + refreshToken)、解析、校验 |
 | JwtAuthenticationFilter.java | OncePerRequestFilter，从 Authorization header 提取 Bearer token 注入 SecurityContext |
 | DataInitializer.java | 启动时检查并创建默认管理员 (admin@myblog.com / admin123) |
-| GlobalExceptionHandler.java | `@RestControllerAdvice`: 404 (ResourceNotFound) / 400 (IllegalArgument) / 500 (通用) |
+| GlobalExceptionHandler.java | `@RestControllerAdvice`: 404 (ResourceNotFound) / 401 (BadCredentials) / 400 (IllegalArgument, MethodArgumentNotValid, MultipartException, MaxUploadSizeExceeded) / 500 (RuntimeException 带原始消息, Exception 通用) |
 | ResourceNotFoundException.java | 自定义异常: `"{resource} not found with {field}: '{value}'"` |
 
 ---
@@ -730,7 +747,7 @@ Controller  →  Service  →  Repository  →  Entity
 | PUT | `/api/admin/projects/{id}` | 已实现 | 更新作品 |
 | DELETE | `/api/admin/projects/{id}` | 已实现 | 删除作品 |
 | GET | `/api/admin/dashboard/stats` | 已实现 | 仪表盘统计：博客/作品/媒体计数 + 最近 5 条 |
-| POST | `/api/admin/media/upload` | 已完成 | 上传图片文件（后端已实现，待前端集成） |
+| POST | `/api/admin/media/upload` | 已实现 | 上传图片（multipart/form-data, file 字段），返回 MediaUploadResponse |
 
 ---
 
@@ -754,8 +771,10 @@ Controller  →  Service  →  Repository  →  Entity
 通过管理后台 `/admin` 登录后，在 `/admin/projects` 中管理作品：新建、编辑（支持 Markdown 详细介绍）、删除。无需编辑源文件。
 
 ### 添加图片
-1. 图片放入 `frontend/public/images/`
-2. 在管理后台编辑器中填写路径 `/images/文件名.jpg`，或直接填写外部 URL
+1. 通过管理后台编辑器中的"选择图片上传"按钮直接上传本地图片（自动填入 URL）
+2. 或手动将图片放入 `frontend/public/images/`，在编辑器中填写路径 `/images/文件名.jpg`
+3. 也可直接填写外部图片 URL
+4. 上传后的图片通过 `/uploads/xxx.png` 访问，前端自动代理到后端
 
 ### 配置项目链接 (GitHub / 演示)
 直接在作品编辑器中填写 `demoUrl` 和 `sourceUrl` 字段，或编辑 [content.ts](frontend/src/lib/content.ts) 中的 `projectLinks` 作为回退
@@ -778,7 +797,7 @@ Controller  →  Service  →  Repository  →  Entity
 - [x] 首页精选作品 — 对接真实 API（`getProjects`，取前 2 篇）
 - [x] 管理后台仪表盘 — 接入真实统计数据
 - [x] 图片上传功能 — 后端实现完成 (POST /api/admin/media/upload)
-- [ ] 图片上传功能 — 前端集成
+- [x] 图片上传功能 — 前端集成完成 (ImageUploader 组件 + PostEditor/ProjectEditor 替换 + beforeFiles rewrite 代理)
 - [ ] 部署上线
 
 ---
@@ -828,3 +847,12 @@ Controller  →  Service  →  Repository  →  Entity
 - [x] 公开页面 (`/`, `/works`, `/blog`, `/about`, `/contact`) 正常运作
 - [x] `GET /api/admin/dashboard/stats` → 已登录返回统计 JSON（posts/projects/media 计数 + recentPosts/recentProjects）；未登录返回 401
 - [x] 前端 `/admin` 仪表盘 → 4 个统计卡片显示真实数据 + 最近文章/作品列表 + 加载/错误状态处理
+- [x] `POST /api/admin/media/upload` → 上传图片返回 200 + MediaUploadResponse
+- [x] 上传空文件 → 400 "文件不能为空"
+- [x] 上传非图片文件 → 400 "仅允许上传图片文件..."
+- [x] 上传文件名含 .html、Content-Type 为 image/png → URL 以 .png 结尾（安全扩展名）
+- [x] DB 保存失败 → 孤儿文件被清理，异常正常抛出
+- [x] 前端 PostEditor/ProjectEditor → 点击"选择图片上传"可上传本地图片
+- [x] `next.config.ts` beforeFiles rewrite → `/uploads/**` 代理到后端
+- [x] 后端 `mvn test` → 21 tests pass
+- [x] 前端 `npm run build` → 14 routes 生成成功

@@ -1,10 +1,10 @@
+# CLAUDE.md
 
-<<<<<<< HEAD
 此文件为 Claude Code (claude.ai/code) 提供当前仓库的开发指引。
 
 ## 项目概述
 
-个人博客 & 作品展示网站 — 支持 Markdown 编写技术博客、展示个人开发项目。单用户系统（博主本人使用），中文内容，英文代码标识。当前处于 **Phase 1** 阶段（项目脚手架 + 前端视觉已完成，后端骨架完成，JWT 认证流程已实现）。
+个人博客 & 作品展示网站 — 支持 Markdown 编写技术博客、展示个人开发项目。单用户系统（博主本人使用），中文内容，英文代码标识。当前处于 **Phase 1** 阶段（核心功能已完成，待仪表盘前端集成 + 部署上线）。
 
 ## 架构
 
@@ -13,9 +13,9 @@ frontend/   — Next.js 16 (App Router) + Tailwind CSS v4 + TypeScript
 backend/    — Java 17 + Spring Boot 3.2 + Maven + JPA/Hibernate + MySQL 8.0
 ```
 
-博客和作品相关页面（列表/详情）均已对接真实后端 API，通过 `src/lib/api.ts` 调用 `http://localhost:8080/api`。管理后台的博客和作品 CRUD 均已完整接入后端。
-
 **数据流向：** Next.js 页面 → `src/lib/api.ts` → Spring Boot REST API → JPA Repository → MySQL
+
+博客和作品相关页面（列表/详情）均已对接真实后端 API，管理后台的博客和作品 CRUD 均已完整接入后端，图片上传已集成。
 
 **Markdown 渲染：** 博客正文使用 `react-markdown` + `remark-gfm`，具体见 `MarkdownContent.tsx` 组件。
 
@@ -105,7 +105,7 @@ CSS 设计 Token（颜色、字体、动效、噪点纹理覆盖层）集中在 
 - **客户端组件** 仅在需要交互的地方使用：`Header`（usePathname）、`FadeIn`/`FadeInStagger`（IntersectionObserver）、`ImageOrPlaceholder`（onError 状态）、`ImageReveal`（clip-path 动效）
 - **`use client`** 指令显式标记客户端组件
 - 可复用 UI 原语在 `src/components/ui/`，页面布局壳在 `src/components/layout/`
-- 管理员组件在 `src/components/admin/`（`AuthGuard`、`LoginForm`）
+- 管理员组件在 `src/components/admin/`（`AuthGuard`、`LoginForm`、`ImageUploader`）
 
 ### API 路径注意
 
@@ -120,7 +120,7 @@ CSS 设计 Token（颜色、字体、动效、噪点纹理覆盖层）集中在 
 
 ### 动态渲染
 
-需要每次请求从 API 拉取数据的页面使用 `export const dynamic = "force-dynamic"` 禁用静态生成（博客列表页、博客详情页）。未来接入 CMS/数据库后所有公开页面都应使用此模式。
+需要每次请求从 API 拉取数据的页面使用 `export const dynamic = "force-dynamic"` 禁用静态生成（博客列表页、博客详情页、作品列表页、作品详情页、管理后台页面）。
 
 ### 前端认证流程
 
@@ -153,6 +153,7 @@ Controller → Service → Repository → Entity
 - **JSON 字段**（tags、techStack、skills、screenshots）使用 `@Column(columnDefinition = "JSON")` + JPA 转换器实现与 `List<String>` 的双向转换
 - **异常处理：** `GlobalExceptionHandler`（`@RestControllerAdvice`）捕获 `ResourceNotFoundException`（返回 404）和通用异常（返回 500）
 - **Lombok：** Entity/DTO 使用 `@Getter`/`@Setter`/`@NoArgsConstructor` 等注解减少样板代码
+- **依赖注入：** 使用构造器注入（非 `@Autowired` 字段注入）
 
 ### 管理后台路由
 
@@ -168,24 +169,49 @@ Controller → Service → Repository → Entity
 
 新建和编辑共用对应 `PostEditor.tsx` / `ProjectEditor.tsx` 组件（通过可选 `id` prop 区分）。
 
-## 当前进度（Phase 1）
+### 完整 API 端点一览
 
-**已完成：**
+**公开接口（无需认证）：**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/blogs` 或 `/api/posts` | 博客列表（分页 `?page=&size=`） |
+| GET | `/api/blogs/{slug}` 或 `/api/posts/{slug}` | 博客详情 |
+| GET | `/api/projects` | 作品列表（分页） |
+| GET | `/api/projects/{slug}` | 作品详情 |
+| POST | `/api/auth/admin/login` | 管理员登录 |
+| POST | `/api/auth/admin/refresh` | 刷新 access token |
+
+**管理接口（需 Bearer Token）：**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/dashboard/stats` | 仪表盘统计数据 |
+| POST | `/api/admin/posts` | 创建博客 |
+| PUT | `/api/admin/posts/{id}` | 更新博客 |
+| DELETE | `/api/admin/posts/{id}` | 删除博客 |
+| POST | `/api/admin/projects` | 创建作品 |
+| PUT | `/api/admin/projects/{id}` | 更新作品 |
+| DELETE | `/api/admin/projects/{id}` | 删除作品 |
+| POST | `/api/admin/media/upload` | 上传媒体文件 |
+| GET | `/api/auth/admin/me` | 获取当前管理员信息 |
+| POST | `/api/auth/admin/logout` | 登出（吊销 token version） |
+
+## 当前进度
+
+**已完成（Phase 1）：**
 - 8 个前端页面（首页、作品列表/详情、博客列表/详情、关于、联系、管理后台），视觉效果完整
-- 全部 UI 组件（Header、Footer、FadeIn、ImageOrPlaceholder、SectionHeading、ImageReveal、HeroBackground 等）
-- 后端 Blog、Project、Auth、Media 的完整 CRUD
-- JWT 认证流程（access/refresh 双令牌、token version 吊销、前端 AuthGuard/LoginForm）
+- 全部 UI 组件（Header、Footer、FadeIn、FadeInStagger、ImageOrPlaceholder、ImageReveal、SectionHeading、HeroBackground 等）
+- 后端 Blog、Project、Auth、Media、Dashboard 的完整 CRUD
+- JWT 认证流程（access/refresh 双令牌、token version 吊销、前/后端完整实现）
 - 管理员登录页面可用（`admin@myblog.com` / `admin123`）
-- 博客管理 CRUD 已完整实现：`AdminBlogController` + 前端 `PostEditor` + 文章列表/新建/编辑页面
-- 作品管理 CRUD 已完整实现：`AdminProjectController` + 前端 `ProjectEditor` + 作品列表/新建/编辑页面
+- 博客管理 CRUD：`AdminBlogController` + 前端 `PostEditor` + 文章列表/新建/编辑页面
+- 作品管理 CRUD：`AdminProjectController` + 前端 `ProjectEditor` + 作品列表/新建/编辑页面
+- 仪表盘统计 API：`GET /api/admin/dashboard/stats`（Blog/Project/Media 总数，含单元测试）
+- 图片上传：`POST /api/admin/media/upload` + 前端 `ImageUploader` 组件已接入 PostEditor 和 ProjectEditor
 - 博客和作品公开页面均已对接真实后端 API，支持 Markdown 渲染
-- 4 张 MySQL 表已创建并验证
-- 前后端 CORS 已配置，SecurityConfig 强制执行 `/api/admin/**` 认证
-- 图片上传后端接口已实现（`POST /api/admin/media/upload`，含文件校验、安全扩展名、MediaUploadResponse DTO、孤儿文件清理）
-
-**已完成：**
-- 图片上传前端集成 — `ImageUploader` 组件已接入 PostEditor 和 ProjectEditor
+- 4 张 MySQL 表已创建并验证，前后端 CORS 已配置
 
 **待实现：**
-- 管理后台仪表盘接入真实统计数据
+- 管理后台仪表盘前端接入真实统计数据（`/admin` 页面）
 - 部署上线

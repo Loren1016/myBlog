@@ -13,7 +13,7 @@ frontend/   — Next.js 16 (App Router) + Tailwind CSS v4 + TypeScript
 backend/    — Java 17 + Spring Boot 3.2 + Maven + JPA/Hibernate + MySQL 8.0
 ```
 
-博客相关页面（列表/详情）已对接真实后端 API，通过 `src/lib/api.ts` 调用 `http://localhost:8080/api`。作品页面仍使用静态 mock 数据，管理后台的博客 CRUD 已完整接入后端。
+博客和作品相关页面（列表/详情）均已对接真实后端 API，通过 `src/lib/api.ts` 调用 `http://localhost:8080/api`。管理后台的博客和作品 CRUD 均已完整接入后端。
 
 **数据流向：** Next.js 页面 → `src/lib/api.ts` → Spring Boot REST API → JPA Repository → MySQL
 
@@ -162,25 +162,30 @@ Controller → Service → Repository → Entity
 | `/admin/posts` | 文章列表（分页、删除） |
 | `/admin/posts/new` | 新建文章 |
 | `/admin/posts/[id]` | 编辑文章 |
+| `/admin/projects` | 作品列表（分页、删除） |
+| `/admin/projects/new` | 新建作品 |
+| `/admin/projects/[id]` | 编辑作品 |
 
-新建和编辑共用 `PostEditor.tsx` 组件（通过可选 `id` prop 区分）。
+新建和编辑共用对应 `PostEditor.tsx` / `ProjectEditor.tsx` 组件（通过可选 `id` prop 区分）。
 
 ## 当前进度（Phase 1）
 
 **已完成：**
 - 8 个前端页面（首页、作品列表/详情、博客列表/详情、关于、联系、管理后台），视觉效果完整
 - 全部 UI 组件（Header、Footer、FadeIn、ImageOrPlaceholder、SectionHeading、ImageReveal、HeroBackground 等）
-- 后端 Blog、Project、Auth、Media 的完整 CRUD 骨架
+- 后端 Blog、Project、Auth、Media 的完整 CRUD
 - JWT 认证流程（access/refresh 双令牌、token version 吊销、前端 AuthGuard/LoginForm）
 - 管理员登录页面可用（`admin@myblog.com` / `admin123`）
 - 博客管理 CRUD 已完整实现：`AdminBlogController` + 前端 `PostEditor` + 文章列表/新建/编辑页面
-- 博客公开页面（列表 + 详情）已对接真实后端 API，支持 Markdown 渲染
+- 作品管理 CRUD 已完整实现：`AdminProjectController` + 前端 `ProjectEditor` + 作品列表/新建/编辑页面
+- 博客和作品公开页面均已对接真实后端 API，支持 Markdown 渲染
 - 4 张 MySQL 表已创建并验证
 - 前后端 CORS 已配置，SecurityConfig 强制执行 `/api/admin/**` 认证
+- 图片上传后端接口已实现（`POST /api/admin/media/upload`，含文件校验、安全扩展名、MediaUploadResponse DTO、孤儿文件清理）
+
+**已完成：**
 
 **待实现：**
-- 作品管理端 CRUD API + 前端管理页面
-- 作品公开页面对接真实 API 数据（当前仍用静态 mock 数据）
-- 图片上传至后端（MediaController 骨架已有，待前端集成）
+- 图片上传前端集成（后端接口已就绪）
 - 管理后台仪表盘接入真实统计数据
 - 部署上线

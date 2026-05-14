@@ -1,6 +1,6 @@
 # 项目开发进度
 
-> 更新日期: 2026-05-14（博客管理 CRUD + 公开页面对接真实 API 已完成）
+> 更新日期: 2026-05-14（仪表盘真实统计接入；博客 + 作品管理 CRUD 完成；全部公开页面对接真实 API；图片上传后端实现）
 
 ---
 
@@ -161,7 +161,7 @@
 #### `/` — 首页
 文件: [src/app/page.tsx](frontend/src/app/page.tsx)
 
-数据来源: 文件内静态 mock 数据 + `projectImages` (来自 content.ts)
+数据来源: 精选作品 — `getProjects()` → `GET /api/projects` 真实 API，取前 2 篇（按 priority 排序）+ `projectImages` 作为封面图回退；最新文章 — `getPublishedBlogs()` → `GET /api/posts` 真实 API，取前 3 篇 · `export const dynamic = "force-dynamic"` · 两个请求通过 `Promise.all` 并行加载
 
 **Hero 区**
 - 小标签 "开发者 & 写作者" (0.1s 淡入)
@@ -175,14 +175,14 @@
 - 卡片使用 `ImageOrPlaceholder`（图片 → 渐变色回退）
 - hover 时: 暗色叠层淡入 + 底部信息上移
 - 底部信息: 分类标签、项目名 (h3)、简介
-- 数据: `featuredWorks` 数组 → 目前展示 "流光" 和 "野记"
+- 数据: `getProjects()` API 返回的前 2 个作品（按 priority DESC 排序）；无作品时显示空状态
 - 底部 "查看所有作品 →" 链接到 /works
 
 **最新文章区**
 - SectionHeading label="最新文章" title="博客"
-- 3 篇文章，日期 + 标题 + 分类的编辑式列表
-- hover 行背景变 `cream-deep/50`
-- 数据: `recentPosts` 数组
+- 从 `/api/posts` 动态拉取，取前 3 篇 published 文章
+- 日期 + 标题 + 分类的编辑式列表；hover 行背景变 `cream-deep/50`
+- API 失败或无文章时显示空状态
 - 底部 "阅读所有文章 →" 链接到 /blog
 
 **联系 CTA**
@@ -192,49 +192,37 @@
 #### `/works` — 作品列表页
 文件: [src/app/works/page.tsx](frontend/src/app/works/page.tsx)
 
-数据来源: 文件内 `projects` 数组 + `projectImages` (content.ts) + `projectLinks` (content.ts)
+数据来源: `getProjects()` → `GET /api/projects` 真实后端 API · `export const dynamic = "force-dynamic"` · 封面图优先取 API 返回的 `coverImage`，回退到 `projectImages` 配置
 
 - SectionHeading label="项目" title="作品"
-- 2 列非对称网格，`gap-[2px]`
-- 5 个项目卡片: 流光、野记、漂移、素线、索引
+- 2 列网格，`gap-[2px]`，首项 `lg:col-span-2` (aspect-ratio 16/6)，其余 4/3
 - 每个卡片: `ImageOrPlaceholder` 图片区、hover 暗色叠层(z-10)、底部信息(z-20)
-- 信息: 年份 + 技术标签 + 项目名 + 简介
+- 信息: 年份 (completedAt) + 技术栈标签 (techStack) + 项目名 + 简介
 - hover 效果: 叠层淡入 + 信息上移 + 文字变白
-- 大项目 (流光) `lg:col-span-2`，aspect-ratio 16/6
-- 中等项目 (野记、素线) aspect-ratio 4/3
-- 小项目 (漂移、索引) aspect-ratio 1/1
+- API 错误时显示 "暂时无法加载作品。"；无作品时显示 "还没有作品。"
 - 点击跳转 `/works/[slug]` 详情页
 
 #### `/works/[slug]` — 作品详情页 (动态路由)
 文件: [src/app/works/[slug]/page.tsx](frontend/src/app/works/[slug]/page.tsx)
 
-数据来源: 文件内 `projectData` + `projectImages` (content.ts) + `projectLinks` (content.ts)
+数据来源: `getProjectBySlug(slug)` → `GET /api/projects/{slug}` 真实后端 API · `export const dynamic = "force-dynamic"` · slug 不存在时 `notFound()` · 封面图优先取 API 返回的 `coverImage`，回退到 `projectImages`；链接优先取 API 的 `demoUrl`/`sourceUrl`，回退到 `projectLinks` 配置
 
 - 动态路由，`params.slug` 获取项目标识
-- slug 不存在时返回 404 提示页
+- slug 不存在时触发 Next.js 404 页面
 - 返回链接 "← 所有作品"
 
 **页面结构**
 1. Hero 大图 (16/7，ImageOrPlaceholder)
-2. Meta 标签行: 年份 + 技术标签
+2. Meta 标签行: 年份 (completedAt) + 技术栈标签 (techStack)
 3. 项目名称 (h1)
-4. 一句话简介 (xl)
+4. 一句话简介 (tagline, xl)
 5. 分割线
-6. 详情正文区 (三栏: 项目背景 / 技术方案 / 回顾与反思)
-7. 底部链接区:
-   - 有 `demo` → 显示 "在线演示 →" (新窗口打开)
-   - 有 `source` → 显示 "源代码 →" (新窗口打开)
+6. 详情正文区: `description` 通过 `MarkdownContent` 渲染
+7. 截图区: `screenshots` 数组以 2 列网格展示（仅当有截图时）
+8. 底部链接区:
+   - 有 `demoUrl` → 显示 "在线演示 →" (新窗口打开)
+   - 有 `sourceUrl` → 显示 "源代码 →" (新窗口打开)
    - 都没有 → 显示 "链接待配置"
-
-**配置项目链接** — 编辑 [content.ts](frontend/src/lib/content.ts):
-```ts
-export const projectLinks = {
-  lumina: {
-    demo: "https://你的演示地址.com",
-    source: "https://github.com/你的用户名/lumina",
-  },
-};
-```
 
 #### `/blog` — 博客列表页
 文件: [src/app/blog/page.tsx](frontend/src/app/blog/page.tsx)
@@ -304,9 +292,14 @@ export const projectLinks = {
 - **登录表单 (LoginForm)**: 小标签 "管理" + h1 "登录" + 邮箱/密码底线输入框 + 登录按钮
 - **仪表盘 (Dashboard)**:
   - 右上角显示当前管理员姓名、邮箱、退出登录按钮
-  - 3 个统计卡片: 已发布文章 / 作品数量 / 媒体文件 (数值显示 "—"，待接入真实统计)
-  - 2 个快捷入口卡片: 文章管理 → `/admin/posts` + 新建文章 → `/admin/posts/new`
-  - 底部提示: "管理功能将在后续阶段完整实现。"
+  - 4 个统计卡片 (2x2 网格): 已发布文章 / 草稿 / 作品数量 / 媒体文件 — 数值通过 `GET /api/admin/dashboard/stats` 实时查询
+  - 最近更新的文章列表 (最近 5 条，标题 + slug + 日期 + 状态标签，点击跳转编辑页)
+  - 最近更新的作品列表 (最近 5 条，名称 + slug + 日期，点击跳转编辑页)
+  - 4 个快捷入口卡片 (2x2 网格):
+    - 新建文章 → `/admin/posts/new`
+    - 文章管理 → `/admin/posts`
+    - 作品管理 → `/admin/projects`
+    - 新建作品 → `/admin/projects/new`
 - **退出登录**: 调用 `POST /api/auth/admin/logout` + 清除 localStorage → 返回登录表单
 
 #### `/admin/posts` — 文章管理列表
@@ -339,6 +332,39 @@ export const projectLinks = {
 - 两个提交按钮: "保存草稿"（status=draft）+ "发布"（status=published）
 - 新建成功后自动跳转到编辑页 (`router.replace`)
 - 保存/发布后显示 "已保存。" 成功提示（2 秒自动消失）
+
+#### `/admin/projects` — 作品管理列表
+文件: [src/app/admin/projects/page.tsx](frontend/src/app/admin/projects/page.tsx)
+
+- AuthGuard 保护，通过 `adminListProjects()` 调用 `GET /api/admin/projects` 获取全部作品
+- 显示作品数量 + 当前管理员名
+- 顶部操作栏: "新建作品" 链接 + "仪表盘" 返回链接
+- 作品列表: 名称 (可点击编辑)、置顶标签 (priority > 0 时)、slug、tagline、技术栈预览
+- 每件作品有 "编辑" 链接和 "删除" 按钮 (含确认/取消两步操作)
+- 空列表时显示 "还没有作品。" + 新建入口
+- 加载中和错误状态均有处理
+
+#### `/admin/projects/new` — 新建作品
+文件: [src/app/admin/projects/new/page.tsx](frontend/src/app/admin/projects/new/page.tsx)
+
+- AuthGuard 保护，渲染 `<ProjectEditor />`（无 `id` prop）
+
+#### `/admin/projects/[id]` — 编辑作品
+文件: [src/app/admin/projects/[id]/page.tsx](frontend/src/app/admin/projects/[id]/page.tsx)
+
+- 通过 `useParams()` 获取作品 ID，渲染 `<ProjectEditor id={id} />`
+
+#### ProjectEditor — 作品编辑器（共用组件）
+文件: [src/app/admin/projects/ProjectEditor.tsx](frontend/src/app/admin/projects/ProjectEditor.tsx)
+
+- 通过可选 `id` prop 区分新建/编辑模式
+- 编辑模式下启动时调用 `adminGetProject()` 加载已有数据
+- 表单字段: 作品名称 (\*)、Slug (\*)、优先级（数字）、一句话简介、封面图 URL、详细介绍（Markdown 文本区）、技术栈（逗号分隔 → JSON 字符串）、截图 URL（逗号分隔 → JSON 字符串）、演示链接、源码链接、我的角色、完成日期
+- `screenshots` / `techStack` 字段转换: 后端存储为 JSON 字符串 `["a","b"]`，编辑器用逗号分隔文本输入/展示，通过 `jsonArrayStringToCommaText` / `commaTextToJsonArrayString` 双向转换
+- 前端校验: name/slug 非空、priority 为数字
+- 后端校验: `@NotBlank` on name/slug、`@Size(max=200)` on tagline（返回 400 + 中文错误信息）
+- 新建成功后自动跳转到编辑页 (`router.replace`)
+- 保存后显示 "已保存。" 成功提示（2 秒自动消失）
 
 ---
 
@@ -395,6 +421,21 @@ export const projectLinks = {
 | `adminUpdatePost(token, id, data)` | `PUT /api/admin/posts/{id}` | 更新文章 |
 | `adminDeletePost(token, id)` | `DELETE /api/admin/posts/{id}` | 删除文章 |
 
+**管理端作品 CRUD (需 Bearer Token):**
+| 函数 | HTTP | 说明 |
+|------|------|------|
+| `adminListProjects(token, page?)` | `GET /api/admin/projects` | 作品列表（分页） |
+| `adminGetProject(token, id)` | `GET /api/admin/projects/{id}` | 获取单个作品 |
+| `adminCreateProject(token, data)` | `POST /api/admin/projects` | 创建作品 |
+| `adminUpdateProject(token, id, data)` | `PUT /api/admin/projects/{id}` | 更新作品 |
+| `adminDeleteProject(token, id)` | `DELETE /api/admin/projects/{id}` | 删除作品 |
+
+**类型:**
+- `PublicProject` — 公开作品类型，`screenshots`/`techStack` 为 `string[]`（API 层自动从 JSON 字符串解析）
+- `AdminProject` — 管理端原始类型，`screenshots`/`techStack` 为 `string | null`（匹配后端 JSON 字符串）
+- `ProjectInput` — 创建/更新作品请求体
+- `PaginatedProjects` — 分页响应 `{content, totalElements, totalPages, page}`
+
 #### 类型定义
 - [types/blog.ts](frontend/src/types/blog.ts): `Blog` 接口 (14 字段)
 - [types/project.ts](frontend/src/types/project.ts): `Project` 接口 (16 字段)
@@ -418,9 +459,9 @@ frontend/
 │   │   ├── layout.tsx          ← 根布局 (字体加载/Header/Footer)
 │   │   ├── page.tsx            ← 首页
 │   │   ├── works/
-│   │   │   ├── page.tsx        ← 作品列表 (静态 mock)
+│   │   │   ├── page.tsx        ← 作品列表 (对接真实 API)
 │   │   │   └── [slug]/
-│   │   │       └── page.tsx    ← 作品详情 (静态 mock，动态路由)
+│   │   │       └── page.tsx    ← 作品详情 (对接真实 API + Markdown)
 │   │   ├── blog/
 │   │   │   ├── page.tsx        ← 博客列表 (对接真实 API)
 │   │   │   └── [slug]/
@@ -432,13 +473,20 @@ frontend/
 │   │   │   └── page.tsx        ← 联系页
 │   │   └── admin/
 │   │       ├── page.tsx        ← 管理后台仪表盘 (登录/仪表盘)
-│   │       └── posts/
-│   │           ├── page.tsx    ← 文章管理列表
-│   │           ├── PostEditor.tsx ← 文章编辑器 (新建/编辑共用)
+│   │       ├── posts/
+│   │       │   ├── page.tsx    ← 文章管理列表
+│   │       │   ├── PostEditor.tsx ← 文章编辑器 (新建/编辑共用)
+│   │       │   ├── new/
+│   │       │   │   └── page.tsx ← 新建文章
+│   │       │   └── [id]/
+│   │       │       └── page.tsx ← 编辑文章
+│   │       └── projects/
+│   │           ├── page.tsx    ← 作品管理列表
+│   │           ├── ProjectEditor.tsx ← 作品编辑器 (新建/编辑共用)
 │   │           ├── new/
-│   │           │   └── page.tsx ← 新建文章
+│   │           │   └── page.tsx ← 新建作品
 │   │           └── [id]/
-│   │               └── page.tsx ← 编辑文章
+│   │               └── page.tsx ← 编辑作品
 │   ├── components/
 │   │   ├── layout/
 │   │   │   ├── Header.tsx      ← 导航栏 (Client)
@@ -532,9 +580,9 @@ Controller  →  Service  →  Repository  →  Entity
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | VARCHAR(36) PK | UUID 自动生成 |
-| name | VARCHAR(255) | 项目名称 |
-| slug | VARCHAR(255) UNIQUE | URL 标识 |
-| tagline | VARCHAR(200) | 一句话简介 |
+| name | VARCHAR(255) | 项目名称 (@NotBlank) |
+| slug | VARCHAR(255) UNIQUE | URL 标识 (@NotBlank) |
+| tagline | VARCHAR(200) | 一句话简介 (@Size max=200) |
 | description | LONGTEXT | Markdown 详细介绍 |
 | coverImage | VARCHAR(500) | 封面图 URL |
 | screenshots | JSON | 截图 URL 数组 |
@@ -578,8 +626,8 @@ Controller  →  Service  →  Repository  →  Entity
 
 | 接口 | 自定义方法 |
 |------|-----------|
-| BlogRepository | `findBySlug(String slug)` |
-| ProjectRepository | `findBySlug(String slug)` |
+| BlogRepository | `findBySlug(String slug)`, `countByStatus(String status)`, `findTop5ByOrderByUpdatedAtDesc()` |
+| ProjectRepository | `findBySlug(String slug)`, `findTop5ByOrderByUpdatedAtDesc()` |
 | UserRepository | `findByEmail(String email)` |
 | MediaRepository | (仅继承 JpaRepository) |
 
@@ -588,9 +636,10 @@ Controller  →  Service  →  Repository  →  Entity
 | 服务 | 状态 | 方法 |
 |------|------|------|
 | BlogService | 已实现 | `findPublished()`, `findAllPaginated()`, `findById()`, `findBySlug()`, `findBySlugPublished()`, `create()`, `update()`, `delete()` — 含自动设置 publishedAt 逻辑 |
-| ProjectService | 骨架完成 | `findAll()`, `findBySlug()`, `create()`, `update()`, `delete()` |
+| ProjectService | 已实现 | `findAll()`, `findBySlug()`, `findById()`, `findAllPaginated()`, `create()`, `update()`, `delete()` — 含分页排序 (priority DESC, createdAt DESC)、创建时服务端字段控制、分页参数限制 (page>=0, 1<=size<=100) |
 | AuthService | 已实现 | `login()`, `refresh()`, `logout()`, `getMe()`, `getCurrentUser()` — 完整 JWT 认证 |
 | MediaService | 骨架 | `save()` |
+| DashboardService | 已实现 | `getStats()` — 仪表盘统计：博客/作品/媒体计数 + 最近条目列表 |
 
 ### 2.6 Controller 层
 
@@ -599,8 +648,10 @@ Controller  →  Service  →  Repository  →  Entity
 | BlogController | `/api/blogs` + `/api/posts` (双路径) | `GET /` (分页列表), `GET /{slug}` (详情) |
 | AdminBlogController | `/api/admin/posts` | `GET /` (列表含草稿), `GET /{id}`, `POST /` (创建), `PUT /{id}` (更新), `DELETE /{id}` (删除) |
 | ProjectController | `/api/projects` | `GET /` (列表), `GET /{slug}` (详情) |
+| AdminProjectController | `/api/admin/projects` | `GET /` (分页列表), `GET /{id}`, `POST /` (创建), `PUT /{id}` (更新), `DELETE /{id}` (删除) |
 | AuthController | `/api/auth` | `POST /admin/login`, `POST /admin/refresh`, `POST /admin/logout`, `GET /admin/me` |
 | MediaController | `/api/admin/media` | `POST /upload` (骨架，待前端集成) |
+| AdminDashboardController | `/api/admin/dashboard` | `GET /stats` (仪表盘统计) |
 
 ### 2.7 DTO 层
 
@@ -610,6 +661,12 @@ Controller  →  Service  →  Repository  →  Entity
 | BlogDto | Blog 字段全集 |
 | ProjectDto | Project 字段全集 |
 | LoginRequest | email + password，`@Valid` 校验 |
+| PostStatsDto | 博客统计 DTO |
+| ProjectStatsDto | 作品统计 DTO |
+| MediaStatsDto | 媒体统计 DTO |
+| RecentPostDto | 最近博客摘要 DTO |
+| RecentProjectDto | 最近作品摘要 DTO |
+| DashboardStatsResponse | 仪表盘响应 DTO（PostStatsDto + ProjectStatsDto + MediaStatsDto + 最近列表） |
 
 ### 2.8 配置 & 异常处理
 
@@ -667,7 +724,13 @@ Controller  →  Service  →  Repository  →  Entity
 | POST | `/api/admin/posts` | 已实现 | 创建文章 |
 | PUT | `/api/admin/posts/{id}` | 已实现 | 更新文章 |
 | DELETE | `/api/admin/posts/{id}` | 已实现 | 删除文章 |
-| POST | `/api/admin/media/upload` | 骨架 | 上传媒体文件（待完善） |
+| GET | `/api/admin/projects` | 已实现 | 作品列表（分页，priority DESC, createdAt DESC） |
+| GET | `/api/admin/projects/{id}` | 已实现 | 获取单个作品 |
+| POST | `/api/admin/projects` | 已实现 | 创建作品（name/slug @NotBlank 校验） |
+| PUT | `/api/admin/projects/{id}` | 已实现 | 更新作品 |
+| DELETE | `/api/admin/projects/{id}` | 已实现 | 删除作品 |
+| GET | `/api/admin/dashboard/stats` | 已实现 | 仪表盘统计：博客/作品/媒体计数 + 最近 5 条 |
+| POST | `/api/admin/media/upload` | 已完成 | 上传图片文件（后端已实现，待前端集成） |
 
 ---
 
@@ -687,15 +750,15 @@ Controller  →  Service  →  Repository  →  Entity
 ### 修改博客内容
 通过管理后台 `/admin` 登录后，在 `/admin/posts` 中管理文章：新建、编辑（支持 Markdown 正文）、发布、删除。无需编辑源文件。
 
-### 修改作品/首页内容
-直接编辑对应页面的 tsx 文件即可，Next.js HMR 自动热更新。
+### 修改作品内容
+通过管理后台 `/admin` 登录后，在 `/admin/projects` 中管理作品：新建、编辑（支持 Markdown 详细介绍）、删除。无需编辑源文件。
 
 ### 添加图片
 1. 图片放入 `frontend/public/images/`
-2. 编辑 [content.ts](frontend/src/lib/content.ts) 填写路径
+2. 在管理后台编辑器中填写路径 `/images/文件名.jpg`，或直接填写外部 URL
 
-### 配置项目链接 (GitHub)
-编辑 [content.ts](frontend/src/lib/content.ts) 中的 `projectLinks`
+### 配置项目链接 (GitHub / 演示)
+直接在作品编辑器中填写 `demoUrl` 和 `sourceUrl` 字段，或编辑 [content.ts](frontend/src/lib/content.ts) 中的 `projectLinks` 作为回退
 
 ### 修改导航/品牌名
 编辑 [Header.tsx](frontend/src/components/layout/Header.tsx) 和 [layout.tsx](frontend/src/app/layout.tsx) 中的 metadata
@@ -708,11 +771,14 @@ Controller  →  Service  →  Repository  →  Entity
 - [x] 博客管理 CRUD — `AdminBlogController` + 前端 `PostEditor` + 文章列表/新建/编辑页面
 - [x] 博客公开列表页 — 对接真实 API（`getPublishedBlogs`）
 - [x] 博客公开详情页 — 对接真实 API + Markdown 渲染（`getPublishedBlogBySlug` + `MarkdownContent`）
-- [ ] 作品管理 CRUD — Admin API + 前端管理页面
-- [ ] 作品公开页面对接真实 API（当前仍用静态 mock 数据）
-- [ ] 首页数据接入 — 精选作品/最新文章 API 替换 mock 数据
-- [ ] 管理后台仪表盘 — 接入真实统计数据
-- [ ] 图片上传功能 — MediaController 前端集成
+- [x] 首页最新文章 — 对接真实 API（`getPublishedBlogs`，取前 3 篇）
+- [x] 作品管理 CRUD — `AdminProjectController` + 前端 `ProjectEditor` + 作品列表/新建/编辑页面
+- [x] 作品公开列表页 — 对接真实 API（`getProjects`）
+- [x] 作品公开详情页 — 对接真实 API + Markdown 渲染（`getProjectBySlug` + `MarkdownContent`）
+- [x] 首页精选作品 — 对接真实 API（`getProjects`，取前 2 篇）
+- [x] 管理后台仪表盘 — 接入真实统计数据
+- [x] 图片上传功能 — 后端实现完成 (POST /api/admin/media/upload)
+- [ ] 图片上传功能 — 前端集成
 - [ ] 部署上线
 
 ---
@@ -746,6 +812,19 @@ Controller  →  Service  →  Repository  →  Entity
 - [x] 前端 `/admin/posts` → 文章管理列表：查看/编辑/删除
 - [x] 前端 `/admin/posts/new` → 新建文章表单，保存草稿/发布
 - [x] 前端 `/admin/posts/[id]` → 编辑已有文章
+- [x] 前端 `/admin/projects` → 作品管理列表：查看/编辑/删除
+- [x] 前端 `/admin/projects/new` → 新建作品表单
+- [x] 前端 `/admin/projects/[id]` → 编辑已有作品
+- [x] 前端 `/admin` 仪表盘 → 含「作品管理」「新建作品」入口（4 卡片 2x2 网格）
+- [x] `GET /api/admin/projects` → 已登录返回分页列表；未登录返回 401
+- [x] `POST /api/admin/projects` → 已登录创建作品成功；缺少 name/slug 返回 400 + 中文错误
+- [x] `PUT /api/admin/projects/{id}` → 已登录更新作品成功
+- [x] `DELETE /api/admin/projects/{id}` → 已登录删除作品成功
 - [x] 前端 `/blog` → 博客列表从 API 动态加载
 - [x] 前端 `/blog/[slug]` → 博客详情从 API 加载 + Markdown 渲染
-- [x] 公开页面 (`/`, `/works`, `/blog`, `/about`, `/contact`) 未受影响
+- [x] 前端 `/works` → 作品列表从 API 动态加载
+- [x] 前端 `/works/[slug]` → 作品详情从 API 加载 + Markdown 渲染 + 截图展示
+- [x] 前端 `/` 首页 → 精选作品从 API 加载（与博客并行请求）
+- [x] 公开页面 (`/`, `/works`, `/blog`, `/about`, `/contact`) 正常运作
+- [x] `GET /api/admin/dashboard/stats` → 已登录返回统计 JSON（posts/projects/media 计数 + recentPosts/recentProjects）；未登录返回 401
+- [x] 前端 `/admin` 仪表盘 → 4 个统计卡片显示真实数据 + 最近文章/作品列表 + 加载/错误状态处理

@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -37,7 +38,7 @@ public class MediaService {
     public MediaService(MediaRepository mediaRepository,
                         @Value("${file.upload-dir:./uploads}") String uploadDirPath) {
         this.mediaRepository = mediaRepository;
-        this.uploadDir = Paths.get(uploadDirPath);
+        this.uploadDir = Paths.get(uploadDirPath).toAbsolutePath().normalize();
     }
 
     public MediaUploadResponse upload(MultipartFile file) {
@@ -57,7 +58,7 @@ public class MediaService {
         try {
             Files.createDirectories(uploadDir);
             Path targetPath = uploadDir.resolve(storedFilename);
-            file.transferTo(targetPath.toFile());
+            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
 
             String mediaId = storedFilename.substring(0, storedFilename.lastIndexOf("."));
 
@@ -71,7 +72,7 @@ public class MediaService {
             Media saved = mediaRepository.save(media);
             return MediaUploadResponse.from(saved);
         } catch (IOException e) {
-            throw new RuntimeException("文件保存失败", e);
+            throw new RuntimeException("文件保存失败: " + e.getMessage(), e);
         } catch (RuntimeException e) {
             // DB save failed — clean up the written file
             Path targetPath = uploadDir.resolve(storedFilename);

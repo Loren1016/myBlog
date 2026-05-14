@@ -239,3 +239,60 @@ BUILD SUCCESS
 ```
 
 所有已有测试无回归 (AdminDashboardControllerTest x2, DashboardServiceTest x3, MyBlogApplicationTests x1)。
+
+---
+
+## 9. 前端集成 (2026-05-14)
+
+### 新增文件
+| 文件 | 说明 |
+|------|------|
+| `frontend/src/components/admin/ImageUploader.tsx` | 可复用图片上传组件，含文件选择、上传、预览、手动 URL 输入 |
+
+### 修改文件
+| 文件 | 说明 |
+|------|------|
+| `frontend/src/lib/api.ts` | 新增 `adminUploadMedia()` 函数和 `MediaUploadResponse` 类型 |
+| `frontend/src/app/admin/posts/PostEditor.tsx` | 封面图输入替换为 `<ImageUploader>` |
+| `frontend/src/app/admin/projects/ProjectEditor.tsx` | 封面图替换为 `<ImageUploader>`，截图字段新增上传按钮 |
+
+### ImageUploader 组件功能
+- 点击"选择图片上传"按钮 → 本地文件选择 → 上传到 `/api/admin/media/upload`
+- 上传成功后自动填充 URL
+- 上传中显示"上传中…"
+- 上传失败显示红色错误信息
+- 上传后显示 48x48 缩略图预览
+- 同时保留手动输入 URL 的文本框
+- 支持格式提示：JPG / PNG / GIF / WebP，≤ 10MB
+
+### 图片加载问题修复 (next.config.ts beforeFiles rewrite)
+
+**问题**: 上传后的图片 URL 为 `/uploads/xxx.png`，前端页面在 `localhost:3000` 渲染时，`<img src="/uploads/xxx.png">` 解析为 `localhost:3000/uploads/xxx.png`，而图片实际在 `localhost:8080/uploads/xxx.png`，导致 404。
+
+**修复**: 在 `next.config.ts` 中使用 `beforeFiles` rewrites 将 `/uploads/**` 代理到后端：
+
+```ts
+const BACKEND_ORIGIN = process.env.NEXT_PUBLIC_API_URL
+  ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, "")
+  : "http://localhost:8080";
+
+const nextConfig: NextConfig = {
+  async rewrites() {
+    return {
+      beforeFiles: [{
+        source: "/uploads/:path*",
+        destination: `${BACKEND_ORIGIN}/uploads/:path*`,
+      }],
+    };
+  },
+};
+```
+
+关键点：使用 `beforeFiles` 而非默认的 `afterFiles`。Next.js 路由优先级为 `beforeFiles` → 静态文件 → `afterFiles` → 动态路由。`beforeFiles` 在静态文件和 App 路由之前生效，因此可以拦截 `/uploads/*` 请求并代理到后端，不会 404。
+
+### 前端构建验证
+```bash
+cd frontend && npm run build
+```
+TypeScript 无新增错误，14 个路由生成成功。
+

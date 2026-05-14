@@ -53,9 +53,15 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(400, "上传文件大小超过限制 (最大 10MB)");
     }
 
+    @ExceptionHandler(RuntimeException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ApiResponse<Void> handleRuntime(RuntimeException ex) {
+        return ApiResponse.error(500, ex.getMessage() != null ? ex.getMessage() : "服务器内部错误");
+    }
+
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiResponse<Void> handleGeneral(Exception ex) {
-        return ApiResponse.error(500, "Internal server error");
+        return ApiResponse.error(500, ex.getMessage() != null ? ex.getMessage() : "Internal server error");
     }
 }

@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -150,6 +151,30 @@ class MediaServiceTest {
 
         assertTrue(result.getUrl().endsWith(".jpg"),
                 "URL must end with .jpg from MIME type: " + result.getUrl());
+    }
+
+    // ---- Relative path → absolute path ----
+
+    @Test
+    void constructor_shouldConvertRelativePathToAbsolute() {
+        MediaService service = new MediaService(mediaRepository, "./uploads");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "photo.png", "image/png", "data".getBytes());
+
+        MediaUploadResponse result = service.upload(file);
+
+        assertNotNull(result);
+        assertTrue(result.getUrl().endsWith(".png"));
+
+        // The file should have been saved to the JVM's CWD-relative absolute path,
+        // not to Tomcat's temp directory. Clean up afterwards.
+        Path absoluteUploadsDir = Paths.get("./uploads").toAbsolutePath().normalize();
+        Path savedFile = absoluteUploadsDir.resolve(result.getUrl().replace("/uploads/", ""));
+        assertTrue(Files.exists(savedFile),
+                "File should exist at: " + savedFile);
+        // Clean up
+        try { Files.deleteIfExists(savedFile); } catch (IOException ignored) {}
     }
 
     // ---- Issue 5: Orphan file cleanup on DB failure ----

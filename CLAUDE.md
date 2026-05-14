@@ -184,10 +184,8 @@ Controller → Service → Repository → Entity
 - 图片上传后端接口已实现（`POST /api/admin/media/upload`，含文件校验、安全扩展名、MediaUploadResponse DTO、孤儿文件清理）
 
 **已完成：**
+- 图片上传前端集成 — `ImageUploader` 组件已接入 PostEditor 和 ProjectEditor
 
 **待实现：**
-- 图片上传前端集成（后端接口已就绪）
 - 管理后台仪表盘接入真实统计数据
 - 部署上线
-=======
->>>>>>> d53814c80c29f6940d84b28a147e319c86e755c9

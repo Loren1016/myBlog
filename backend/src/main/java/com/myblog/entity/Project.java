@@ -1,6 +1,8 @@
 package com.myblog.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 
 @Entity
@@ -10,12 +12,15 @@ public class Project {
     @Id
     private String id;
 
+    @NotBlank(message = "作品名称不能为空")
     @Column(nullable = false)
     private String name;
 
+    @NotBlank(message = "Slug 不能为空")
     @Column(nullable = false, unique = true)
     private String slug;
 
+    @Size(max = 200, message = "简介不能超过200个字符")
     @Column(length = 200)
     private String tagline;
 

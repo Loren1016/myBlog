@@ -43,6 +43,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/blogs/**").permitAll()
                 .requestMatchers("/api/posts/**").permitAll()
                 .requestMatchers("/api/projects/**").permitAll()
+                .requestMatchers("/api/about/**").permitAll()
                 .requestMatchers("/api/admin/**").authenticated()
                 .anyRequest().permitAll()
             )

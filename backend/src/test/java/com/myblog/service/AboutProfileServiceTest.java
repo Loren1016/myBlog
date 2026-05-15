@@ -1,5 +1,6 @@
 package com.myblog.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.myblog.dto.AboutProfileDto;
 import com.myblog.entity.AboutProfile;
 import com.myblog.repository.AboutProfileRepository;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Optional;
 
@@ -23,13 +25,17 @@ class AboutProfileServiceTest {
     @Mock
     private AboutProfileRepository repository;
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     private AboutProfileService service;
 
     @BeforeEach
     void setUp() {
-        service = new AboutProfileService(repository);
+        service = new AboutProfileService(repository, objectMapper);
         lenient().when(repository.save(any(AboutProfile.class))).thenAnswer(i -> i.getArgument(0));
     }
+
+    // --- existing tests ---
 
     @Test
     void getPublicProfile_shouldReturnDefault_whenNoRecordExists() {
@@ -176,5 +182,160 @@ class AboutProfileServiceTest {
         assertEquals("关于", saved.getHeroEyebrow());
         assertNotNull(saved.getCreatedAt());
         assertNotNull(saved.getUpdatedAt());
+    }
+
+    // --- new tests: JSON validation ---
+
+    @Test
+    void updateProfile_shouldRejectInvalidJson_forSkills() {
+        AboutProfile existing = createMinimalProfile();
+        when(repository.findById("default")).thenReturn(Optional.of(existing));
+
+        AboutProfileDto dto = new AboutProfileDto();
+        dto.setSkills("not-valid-json");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.updateProfile(dto));
+        assertTrue(ex.getMessage().contains("skills"));
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void updateProfile_shouldRejectNonArrayJson_forSkills() {
+        AboutProfile existing = createMinimalProfile();
+        when(repository.findById("default")).thenReturn(Optional.of(existing));
+
+        AboutProfileDto dto = new AboutProfileDto();
+        dto.setSkills("{\"key\": \"value\"}");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.updateProfile(dto));
+        assertTrue(ex.getMessage().contains("数组"));
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void updateProfile_shouldRejectInvalidJson_forExperiences() {
+        AboutProfile existing = createMinimalProfile();
+        when(repository.findById("default")).thenReturn(Optional.of(existing));
+
+        AboutProfileDto dto = new AboutProfileDto();
+        dto.setExperiences("not-json");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.updateProfile(dto));
+        assertTrue(ex.getMessage().contains("experiences"));
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void updateProfile_shouldRejectNonArrayJson_forExperiences() {
+        AboutProfile existing = createMinimalProfile();
+        when(repository.findById("default")).thenReturn(Optional.of(existing));
+
+        AboutProfileDto dto = new AboutProfileDto();
+        dto.setExperiences("\"just a string\"");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.updateProfile(dto));
+        assertTrue(ex.getMessage().contains("数组"));
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void updateProfile_shouldAllowValidArrayJson_forSkills() {
+        AboutProfile existing = createMinimalProfile();
+        when(repository.findById("default")).thenReturn(Optional.of(existing));
+
+        AboutProfileDto dto = new AboutProfileDto();
+        dto.setSkills("[\"Java\",\"Go\"]");
+
+        AboutProfileDto result = service.updateProfile(dto);
+        assertEquals("[\"Java\",\"Go\"]", result.getSkills());
+        verify(repository).save(existing);
+    }
+
+    @Test
+    void updateProfile_shouldAllowObjectArrayJson_forExperiences() {
+        AboutProfile existing = createMinimalProfile();
+        when(repository.findById("default")).thenReturn(Optional.of(existing));
+
+        AboutProfileDto dto = new AboutProfileDto();
+        dto.setExperiences("[{\"period\":\"2024\",\"role\":\"Dev\",\"org\":\"Co\"}]");
+
+        AboutProfileDto result = service.updateProfile(dto);
+        assertEquals("[{\"period\":\"2024\",\"role\":\"Dev\",\"org\":\"Co\"}]", result.getExperiences());
+        verify(repository).save(existing);
+    }
+
+    // --- new tests: race condition ---
+
+    @Test
+    void getPublicProfile_shouldHandleConcurrentInsert() {
+        when(repository.findById("default")).thenReturn(Optional.empty());
+        when(repository.save(any(AboutProfile.class))).thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        AboutProfile existing = new AboutProfile();
+        existing.setId("default");
+        existing.setHeroTitle("Concurrent Winner");
+        existing.setBio("Inserted by other thread");
+        when(repository.findById("default")).thenReturn(Optional.empty(), Optional.of(existing));
+        // Note: second call to findById returns the concurrently-inserted record
+
+        AboutProfileDto result = service.getPublicProfile();
+
+        assertEquals("Concurrent Winner", result.getHeroTitle());
+        assertEquals("Inserted by other thread", result.getBio());
+    }
+
+    // --- new tests: ensureDefaultProfile (startup initialization) ---
+
+    @Test
+    void ensureDefaultProfile_shouldCreateDefault_whenNoneExists() {
+        when(repository.findById("default")).thenReturn(Optional.empty());
+
+        assertDoesNotThrow(() -> service.ensureDefaultProfile());
+
+        verify(repository).save(any(AboutProfile.class));
+    }
+
+    @Test
+    void ensureDefaultProfile_shouldNotThrow_whenRecordAlreadyExists() {
+        AboutProfile existing = new AboutProfile();
+        existing.setId("default");
+        existing.setHeroTitle("Already exists");
+        when(repository.findById("default")).thenReturn(Optional.of(existing));
+
+        assertDoesNotThrow(() -> service.ensureDefaultProfile());
+
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void ensureDefaultProfile_shouldSurviveDuplicateKey() {
+        when(repository.findById("default")).thenReturn(Optional.empty());
+        when(repository.save(any(AboutProfile.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        AboutProfile concurrent = new AboutProfile();
+        concurrent.setId("default");
+        concurrent.setHeroTitle("From other instance");
+        when(repository.findById("default")).thenReturn(Optional.empty(), Optional.of(concurrent));
+
+        assertDoesNotThrow(() -> service.ensureDefaultProfile());
+
+        verify(repository, times(2)).findById("default");
+    }
+
+    // --- helper ---
+
+    private AboutProfile createMinimalProfile() {
+        AboutProfile p = new AboutProfile();
+        p.setId("default");
+        p.setHeroTitle("Test");
+        p.setBio("bio");
+        p.setExperiences("[]");
+        p.setSkills("[]");
+        return p;
     }
 }

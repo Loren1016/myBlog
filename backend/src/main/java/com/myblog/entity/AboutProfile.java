@@ -29,6 +29,7 @@ public class AboutProfile {
     @Column(columnDefinition = "JSON")
     private String skills;
 
+    @Column(columnDefinition = "LONGTEXT")
     private String avatarImage;
 
     private LocalDateTime createdAt;

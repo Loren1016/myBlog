@@ -1,8 +1,11 @@
 package com.myblog.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.myblog.dto.AboutProfileDto;
 import com.myblog.entity.AboutProfile;
 import com.myblog.repository.AboutProfileRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -14,9 +17,11 @@ public class AboutProfileService {
     private static final String DEFAULT_ID = "default";
 
     private final AboutProfileRepository repository;
+    private final ObjectMapper objectMapper;
 
-    public AboutProfileService(AboutProfileRepository repository) {
+    public AboutProfileService(AboutProfileRepository repository, ObjectMapper objectMapper) {
         this.repository = repository;
+        this.objectMapper = objectMapper;
     }
 
     public AboutProfileDto getPublicProfile() {
@@ -36,13 +41,26 @@ public class AboutProfileService {
         return toDto(profile);
     }
 
+    /**
+     * 确保默认记录存在（启动初始化使用）。内部已处理并发竞态。
+     */
+    public void ensureDefaultProfile() {
+        getOrCreateDefault();
+    }
+
     private AboutProfile getOrCreateDefault() {
         Optional<AboutProfile> existing = repository.findById(DEFAULT_ID);
         if (existing.isPresent()) {
             return existing.get();
         }
         AboutProfile profile = buildDefaultProfile();
-        return repository.save(profile);
+        try {
+            return repository.save(profile);
+        } catch (DataIntegrityViolationException e) {
+            // 并发竞争：另一个请求已插入，重新读取
+            return repository.findById(DEFAULT_ID)
+                    .orElseThrow(() -> new RuntimeException("无法初始化关于页资料", e));
+        }
     }
 
     private AboutProfile buildDefaultProfile() {
@@ -73,10 +91,27 @@ public class AboutProfileService {
         if (dto.getIntroLabel() != null) profile.setIntroLabel(dto.getIntroLabel());
         if (dto.getBio() != null) profile.setBio(dto.getBio());
         if (dto.getExperienceTitle() != null) profile.setExperienceTitle(dto.getExperienceTitle());
-        if (dto.getExperiences() != null) profile.setExperiences(dto.getExperiences());
+        if (dto.getExperiences() != null) {
+            validateJsonArray(dto.getExperiences(), "experiences");
+            profile.setExperiences(dto.getExperiences());
+        }
         if (dto.getSkillsTitle() != null) profile.setSkillsTitle(dto.getSkillsTitle());
-        if (dto.getSkills() != null) profile.setSkills(dto.getSkills());
+        if (dto.getSkills() != null) {
+            validateJsonArray(dto.getSkills(), "skills");
+            profile.setSkills(dto.getSkills());
+        }
         if (dto.getAvatarImage() != null) profile.setAvatarImage(dto.getAvatarImage());
+    }
+
+    private void validateJsonArray(String json, String fieldName) {
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            if (!node.isArray()) {
+                throw new IllegalArgumentException(fieldName + " 必须是 JSON 数组");
+            }
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalArgumentException(fieldName + " 不是合法的 JSON: " + e.getMessage());
+        }
     }
 
     private AboutProfileDto toDto(AboutProfile profile) {
